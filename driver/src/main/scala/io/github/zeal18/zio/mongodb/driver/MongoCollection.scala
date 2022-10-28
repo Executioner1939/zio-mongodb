@@ -3,7 +3,6 @@ package io.github.zeal18.zio.mongodb.driver
 import scala.annotation.nowarn
 import scala.jdk.CollectionConverters.*
 import scala.reflect.ClassTag
-
 import com.mongodb.bulk.BulkWriteResult
 import com.mongodb.reactivestreams.client.ClientSession
 import com.mongodb.reactivestreams.client.MongoCollection as JMongoCollection
@@ -15,6 +14,7 @@ import io.github.zeal18.zio.mongodb.driver.ReadConcern
 import io.github.zeal18.zio.mongodb.driver.ReadPreference
 import io.github.zeal18.zio.mongodb.driver.WriteConcern
 import io.github.zeal18.zio.mongodb.driver.*
+import io.github.zeal18.zio.mongodb.driver.DefaultHelper.DefaultsTo
 import io.github.zeal18.zio.mongodb.driver.aggregates.Aggregation
 import io.github.zeal18.zio.mongodb.driver.filters.Filter
 import io.github.zeal18.zio.mongodb.driver.indexes.CreateIndexOptions
@@ -368,6 +368,14 @@ trait MongoCollection[A] {
     * @return a Observable containing the result of the aggregation operation
     *         [[https://www.mongodb.com/docs/manual/aggregation/ Aggregation]]
     */
+  def aggregate[B: Codec](pipeline: Seq[Aggregation]): AggregateQuery[B]
+
+  /** Aggregates documents according to the specified aggregation pipeline.
+    *
+    * @param pipeline the aggregate pipeline
+    * @return a Observable containing the result of the aggregation operation
+    *         [[https://www.mongodb.com/docs/manual/aggregation/ Aggregation]]
+    */
   def aggregate(pipeline: Seq[Aggregation]): AggregateQuery[A]
 
   /** Aggregates documents according to the specified aggregation pipeline.
@@ -382,6 +390,17 @@ trait MongoCollection[A] {
     clientSession: ClientSession,
     pipeline: Seq[Aggregation],
   ): AggregateQuery[A]
+
+  /** Aggregates documents according to the specified aggregation pipeline.
+    *
+    * @param clientSession the client session with which to associate this operation
+    * @param pipeline      the aggregate pipeline
+    * @return a Observable containing the result of the aggregation operation
+    *         [[https://www.mongodb.com/docs/manual/aggregation/ Aggregation]]
+    * @note Requires MongoDB 3.6 or greater
+    */
+  def aggregate[B: Codec](clientSession: ClientSession,
+                          pipeline: Seq[Aggregation]): AggregateQuery[B]
 
   /** Executes a mix of inserts, updates, replaces, and deletes.
     *
@@ -1567,15 +1586,23 @@ object MongoCollection {
     override def find(clientSession: ClientSession, filter: Filter): FindQuery[A] =
       FindQuery(wrapped.find(clientSession, filter, documentClass))
 
+    override def aggregate[B](pipeline: Seq[Aggregation])(implicit codec: Codec[B]): AggregateQuery[B] =
+      AggregateQuery(wrapped.aggregate[B](pipeline.asJava, classOf[B]))
+
     override def aggregate(pipeline: Seq[Aggregation]): AggregateQuery[A] =
       AggregateQuery(wrapped.aggregate[A](pipeline.asJava, documentClass))
 
-    override def aggregate(
-      clientSession: ClientSession,
-      pipeline: Seq[Aggregation],
-    ): AggregateQuery[A] =
+    override def aggregate(clientSession: ClientSession,
+                           pipeline: Seq[Aggregation]): AggregateQuery[A] =
       AggregateQuery(
         wrapped.aggregate[A](clientSession, pipeline.asJava, documentClass),
+      )
+
+    override def aggregate[B](clientSession: ClientSession,
+                              pipeline: Seq[Aggregation])
+                             (implicit codec: Codec[B]): AggregateQuery[B] =
+      AggregateQuery(
+        wrapped.aggregate[B](clientSession, pipeline.asJava, classOf[B]),
       )
 
     override def bulkWrite(requests: Seq[BulkWrite[A]]): Task[BulkWriteResult] =
